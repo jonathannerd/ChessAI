@@ -2,7 +2,7 @@
 
 SixySeveny is a browser-based chess AI written from scratch with HTML, CSS, and vanilla JavaScript. It does not use chess.js, Stockfish, external chess engines, chess rules libraries, or frontend frameworks.
 
-Open `index.html` in a browser to play.
+Open `index.html` in a browser to play. The project is fully static, so it can also be published directly with GitHub Pages.
 
 ## Files
 
@@ -169,3 +169,50 @@ A future version could:
 5. Combine neural evaluation with search, similar to how many modern chess engines still search through legal moves.
 
 For now, SixySeveny is intentionally search-based and beginner-friendly.
+
+## Deploying to GitHub Pages
+
+SixySeveny is a static website. GitHub Pages can host it directly from the project root because `index.html`, `style.css`, and `script.js` are all in the root folder and are linked with relative paths.
+
+To publish it:
+
+1. Create a GitHub repository.
+2. Push the project files to GitHub.
+3. Open the repository on GitHub.
+4. Go to **Settings**.
+5. Go to **Pages**.
+6. Under **Build and deployment**, choose **Deploy from a branch**.
+7. Choose the `main` branch.
+8. Choose `/root`.
+9. Save.
+10. Wait for GitHub Pages to publish the site.
+
+The site URL will usually look like:
+
+```txt
+https://USERNAME.github.io/REPOSITORY-NAME/
+```
+
+For this project, if the repository is `jonathannerd/ChessAI`, the URL will usually be:
+
+```txt
+https://jonathannerd.github.io/ChessAI/
+```
+
+GitHub Pages notes:
+
+- `index.html` must stay in the repository root.
+- CSS and JavaScript should stay linked with relative paths like `./style.css` and `./script.js`.
+- There are no image or piece asset files to upload right now because SixySeveny uses Unicode chess pieces.
+- The site does not require localhost, a backend server, a build command, or external chess libraries.
+
+## Deployment Checklist
+
+- `index.html` is in the root
+- `style.css` loads correctly
+- `script.js` loads correctly
+- no localhost-only paths
+- board works after deployment
+- AI still moves correctly
+- side switching still works
+- training/localStorage still works

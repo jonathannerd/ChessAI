@@ -94,8 +94,15 @@
   let pendingPromotionMoves = [];
 
   let boardElement;
+  let topCoordinatesElement;
+  let bottomCoordinatesElement;
+  let leftCoordinatesElement;
+  let rightCoordinatesElement;
   let statusElement;
+  let currentTurnElement;
+  let evaluationElement;
   let moveListElement;
+  let moveCountElement;
   let restartButton;
   let difficultySelect;
   let sideButtons;
@@ -137,6 +144,7 @@
       halfmoveClock: 0,
       fullmoveNumber: 1,
       moveHistory: [],
+      lastMove: null,
       positionCounts: new Map(),
       gameOver: false
     };
@@ -172,6 +180,18 @@
     return { row: square.row, col: square.col };
   }
 
+  function cloneLastMove(move) {
+    if (!move) {
+      return null;
+    }
+
+    return {
+      from: cloneSquare(move.from),
+      to: cloneSquare(move.to),
+      piece: clonePiece(move.piece)
+    };
+  }
+
   function cloneStateForMove(state, shouldRecord) {
     return {
       board: cloneBoard(state.board),
@@ -184,6 +204,7 @@
       halfmoveClock: state.halfmoveClock,
       fullmoveNumber: state.fullmoveNumber,
       moveHistory: shouldRecord ? state.moveHistory.slice() : state.moveHistory,
+      lastMove: cloneLastMove(state.lastMove),
       positionCounts: shouldRecord ? new Map(state.positionCounts) : state.positionCounts,
       gameOver: state.gameOver
     };
@@ -534,6 +555,11 @@
 
     nextState.turn = oppositeColor(state.turn);
     nextState.gameOver = false;
+    nextState.lastMove = {
+      from: cloneSquare(move.from),
+      to: cloneSquare(move.to),
+      piece: clonePiece(piece)
+    };
 
     if (shouldRecord) {
       const notation = buildMoveNotation(state, nextState, move, capturedPiece);
@@ -878,8 +904,15 @@
 
   function initApp() {
     boardElement = document.getElementById("chessboard");
+    topCoordinatesElement = document.getElementById("topCoordinates");
+    bottomCoordinatesElement = document.getElementById("bottomCoordinates");
+    leftCoordinatesElement = document.getElementById("leftCoordinates");
+    rightCoordinatesElement = document.getElementById("rightCoordinates");
     statusElement = document.getElementById("statusText");
+    currentTurnElement = document.getElementById("currentTurnText");
+    evaluationElement = document.getElementById("evaluationText");
     moveListElement = document.getElementById("moveList");
+    moveCountElement = document.getElementById("moveCountText");
     restartButton = document.getElementById("restartButton");
     difficultySelect = document.getElementById("difficultySelect");
     sideButtons = Array.from(document.querySelectorAll(".sideButton"));
@@ -898,6 +931,7 @@
 
     difficultySelect.addEventListener("change", function () {
       gameState.difficulty = difficultySelect.value;
+      renderStatus();
     });
 
     sideButtons.forEach(function (button) {
@@ -938,12 +972,15 @@
     const cols = gameState.userColor === white ? [0, 1, 2, 3, 4, 5, 6, 7] : [7, 6, 5, 4, 3, 2, 1, 0];
     const checkSquare = isKingInCheck(gameState.board, gameState.turn) ? findKing(gameState.board, gameState.turn) : null;
 
+    renderBoardCoordinates(rows, cols);
+
     rows.forEach(function (row) {
       cols.forEach(function (col) {
         const squareButton = document.createElement("button");
         const piece = gameState.board[row][col];
         const legalMove = findMoveToSquare(selectedLegalMoves, row, col);
         const isSelected = selectedSquare && selectedSquare.row === row && selectedSquare.col === col;
+        const isLastMoveSquare = isSquareInLastMove(row, col);
         const isCheckSquare = sameSquare(checkSquare, { row: row, col: col });
 
         squareButton.type = "button";
@@ -960,6 +997,10 @@
           squareButton.classList.add(legalMove.captured || legalMove.isEnPassant ? "captureMove" : "legalMove");
         }
 
+        if (isLastMoveSquare) {
+          squareButton.classList.add("lastMove");
+        }
+
         if (isCheckSquare) {
           squareButton.classList.add("inCheck");
         }
@@ -971,17 +1012,36 @@
           squareButton.appendChild(pieceSpan);
         }
 
-        const coordSpan = document.createElement("span");
-        coordSpan.className = "coord";
-        coordSpan.textContent = squareName(row, col);
-        squareButton.appendChild(coordSpan);
-
         squareButton.addEventListener("click", function () {
           handleSquareClick(row, col);
         });
 
         boardElement.appendChild(squareButton);
       });
+    });
+  }
+
+  function renderBoardCoordinates(rows, cols) {
+    const fileLabels = cols.map(function (col) {
+      return files[col];
+    });
+    const rankLabels = rows.map(function (row) {
+      return String(8 - row);
+    });
+
+    renderCoordinateLine(topCoordinatesElement, fileLabels);
+    renderCoordinateLine(bottomCoordinatesElement, fileLabels);
+    renderCoordinateLine(leftCoordinatesElement, rankLabels);
+    renderCoordinateLine(rightCoordinatesElement, rankLabels);
+  }
+
+  function renderCoordinateLine(element, labels) {
+    element.innerHTML = "";
+
+    labels.forEach(function (label) {
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = label;
+      element.appendChild(labelSpan);
     });
   }
 
@@ -993,8 +1053,18 @@
     return base + ", " + colorName(piece.color) + " " + pieceNames[piece.type];
   }
 
+  function isSquareInLastMove(row, col) {
+    if (!gameState.lastMove) {
+      return false;
+    }
+
+    return sameSquare(gameState.lastMove.from, { row: row, col: col }) || sameSquare(gameState.lastMove.to, { row: row, col: col });
+  }
+
   function renderStatus() {
     const result = getGameResult(gameState);
+    currentTurnElement.textContent = colorName(gameState.turn) + " (" + (gameState.turn === gameState.userColor ? "you" : "SixySeveny") + ")";
+    evaluationElement.textContent = formatEvaluation(gameState, result);
 
     if (result) {
       gameState.gameOver = true;
@@ -1014,8 +1084,23 @@
     statusElement.textContent = actorText + " as " + colorName(gameState.turn) + "." + checkText;
   }
 
+  function formatEvaluation(state, result) {
+    if (result) {
+      if (result.winner === null) {
+        return "0.00";
+      }
+
+      return result.winner === state.aiColor ? "Mate for SixySeveny" : "Mate against SixySeveny";
+    }
+
+    const score = evaluateState(state, state.aiColor, null, 0) / 100;
+    const sign = score > 0 ? "+" : "";
+    return "SixySeveny " + sign + score.toFixed(2);
+  }
+
   function renderMoveList() {
     moveListElement.innerHTML = "";
+    moveCountElement.textContent = gameState.moveHistory.length === 1 ? "1 move" : String(gameState.moveHistory.length) + " moves";
 
     gameState.moveHistory.forEach(function (notation, index) {
       const item = document.createElement("li");

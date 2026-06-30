@@ -4,22 +4,32 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SixySeveny Chess AI</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <main class="app">
-    <section class="gamePanel" aria-label="SixySeveny chess game">
-      <header class="topBar">
-        <div>
-          <h1>SixySeveny</h1>
-          <p class="tagline">A handmade browser chess AI.</p>
+    <section class="boardPanel" aria-label="SixySeveny chess game">
+      <div class="boardShell">
+        <div class="boardFrame" aria-label="Chessboard with coordinates">
+          <div id="topCoordinates" class="boardCoordinates fileCoordinates topCoordinates" aria-hidden="true"></div>
+          <div id="leftCoordinates" class="boardCoordinates rankCoordinates leftCoordinates" aria-hidden="true"></div>
+          <div id="chessboard" class="chessboard" aria-label="Chessboard"></div>
+          <div id="rightCoordinates" class="boardCoordinates rankCoordinates rightCoordinates" aria-hidden="true"></div>
+          <div id="bottomCoordinates" class="boardCoordinates fileCoordinates bottomCoordinates" aria-hidden="true"></div>
         </div>
-        <button id="restartButton" class="primaryButton" type="button">Restart</button>
+      </div>
+    </section>
+
+    <aside class="sidePanel" aria-label="Game information">
+      <header class="brandBlock">
+        <p class="eyebrow">Browser chess AI</p>
+        <h1>SixySeveny</h1>
+        <p class="tagline">Search-based chess, built by hand.</p>
       </header>
 
-      <div class="controls" aria-label="Game controls">
+      <section class="controlPanel" aria-label="Game controls">
         <fieldset class="controlGroup">
-          <legend>Play as</legend>
+          <legend>Choose side</legend>
           <div class="segmentedControl" id="sideSelector">
             <button class="sideButton active" type="button" data-side="w">White</button>
             <button class="sideButton" type="button" data-side="b">Black</button>
@@ -35,18 +45,32 @@
             <option value="veryHard">Very Hard - depth 4</option>
           </select>
         </label>
-      </div>
 
-      <p id="statusText" class="statusText" aria-live="polite">White to move.</p>
+        <button id="restartButton" class="primaryButton" type="button">Restart game</button>
+      </section>
 
-      <div class="boardShell">
-        <div id="chessboard" class="chessboard" aria-label="Chessboard"></div>
-      </div>
-    </section>
+      <section class="statusPanel" aria-label="Current game status">
+        <div class="statusItem">
+          <span class="statusLabel">Current turn</span>
+          <strong id="currentTurnText">White</strong>
+        </div>
+        <div class="statusItem">
+          <span class="statusLabel">Game status</span>
+          <strong id="statusText" aria-live="polite">White to move.</strong>
+        </div>
+        <div class="statusItem">
+          <span class="statusLabel">Evaluation</span>
+          <strong id="evaluationText">0.00</strong>
+        </div>
+      </section>
 
-    <aside class="infoPanel" aria-label="Game information">
-      <h2>Move List</h2>
-      <ol id="moveList" class="moveList"></ol>
+      <section class="movesPanel" aria-label="Move history">
+        <div class="panelHeader">
+          <h2>Move List</h2>
+          <span id="moveCountText">0 moves</span>
+        </div>
+        <ol id="moveList" class="moveList"></ol>
+      </section>
     </aside>
   </main>
 
@@ -57,6 +81,6 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="./script.js"></script>
 </body>
 </html>
