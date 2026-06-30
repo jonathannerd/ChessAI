@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SixySeveny Chess AI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <section class="gamePanel" aria-label="SixySeveny chess game">
+      <header class="topBar">
+        <div>
+          <h1>SixySeveny</h1>
+          <p class="tagline">A handmade browser chess AI.</p>
+        </div>
+        <button id="restartButton" class="primaryButton" type="button">Restart</button>
+      </header>
+
+      <div class="controls" aria-label="Game controls">
+        <fieldset class="controlGroup">
+          <legend>Play as</legend>
+          <div class="segmentedControl" id="sideSelector">
+            <button class="sideButton active" type="button" data-side="w">White</button>
+            <button class="sideButton" type="button" data-side="b">Black</button>
+          </div>
+        </fieldset>
+
+        <label class="controlGroup">
+          <span>Difficulty</span>
+          <select id="difficultySelect">
+            <option value="easy">Easy - depth 1</option>
+            <option value="medium" selected>Medium - depth 2</option>
+            <option value="hard">Hard - depth 3</option>
+            <option value="veryHard">Very Hard - depth 4</option>
+          </select>
+        </label>
+      </div>
+
+      <p id="statusText" class="statusText" aria-live="polite">White to move.</p>
+
+      <div class="boardShell">
+        <div id="chessboard" class="chessboard" aria-label="Chessboard"></div>
+      </div>
+    </section>
+
+    <aside class="infoPanel" aria-label="Game information">
+      <h2>Move List</h2>
+      <ol id="moveList" class="moveList"></ol>
+    </aside>
+  </main>
+
+  <div id="promotionDialog" class="promotionDialog hidden" role="dialog" aria-modal="true" aria-label="Choose promotion piece">
+    <div class="promotionBox">
+      <h2>Promote pawn</h2>
+      <div id="promotionChoices" class="promotionChoices"></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
