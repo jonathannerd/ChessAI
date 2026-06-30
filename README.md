@@ -216,3 +216,18 @@ GitHub Pages notes:
 - AI still moves correctly
 - side switching still works
 - training/localStorage still works
+
+## Responsive UI Fix
+
+This version includes a responsive layout fix for GitHub Pages and different devices:
+
+- The app uses a flexible grid that keeps the board and side panel from squeezing each other.
+- The chessboard frame uses viewport-aware sizing so it stays square on desktops, laptops, tablets, and phones.
+- Coordinates are tied to the same grid as the board so they stay aligned when the board flips.
+- Pieces use a broader chess-symbol font stack and responsive sizing to reduce differences between macOS, Windows, Chromebooks, and mobile browsers.
+- The CSS and JavaScript links include a version query to help browsers load the newest deployed files instead of old cached copies.
+
+If the deployed site still looks old after pushing, hard refresh the page:
+
+- Mac: `Cmd + Shift + R`
+- Windows/Chromebook: `Ctrl + F5`
