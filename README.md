@@ -2,7 +2,7 @@
 
 SixySeveny is a browser-based chess AI written from scratch with HTML, CSS, and vanilla JavaScript. It does not use chess.js, Stockfish, external chess engines, chess rules libraries, or frontend frameworks.
 
-Open `index.html` in a browser to play. The project is fully static, so it can also be published directly with GitHub Pages.
+Open `https://jonathannerd.github.io/ChessAI/` in a browser to play. The project is fully static, so it can also be published directly with GitHub Pages.
 
 ## Files
 
