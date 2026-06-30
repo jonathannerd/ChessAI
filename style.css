@@ -116,6 +116,7 @@ h2 {
 
 .controlPanel,
 .statusPanel,
+.searchPanel,
 .movesPanel {
   display: grid;
   gap: 10px;
@@ -211,6 +212,36 @@ select:focus {
 .statusItem strong {
   font-size: 0.96rem;
   line-height: 1.25;
+}
+
+.searchStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.searchStat {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px;
+  border: 2px solid rgba(63, 85, 63, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 247, 221, 0.34);
+}
+
+.searchStat strong {
+  font-size: 0.92rem;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.bestMoveStat {
+  grid-column: 1 / -1;
+}
+
+#thinkingText.thinking {
+  color: var(--capture);
 }
 
 .panelHeader {
@@ -491,6 +522,14 @@ select:focus {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .searchStatsGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .bestMoveStat {
+    grid-column: auto;
+  }
+
   .moveList {
     max-height: 220px;
   }
@@ -520,6 +559,14 @@ select:focus {
 
   .statusPanel {
     grid-template-columns: 1fr;
+  }
+
+  .searchStatsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bestMoveStat {
+    grid-column: 1 / -1;
   }
 
   h1 {

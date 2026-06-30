@@ -11,6 +11,11 @@
     hard: 3,
     veryHard: 4
   };
+  const maxQuiescenceDepth = 4;
+  const maxTranspositionEntries = 50000;
+  const exactFlag = "exact";
+  const lowerBoundFlag = "lowerBound";
+  const upperBoundFlag = "upperBound";
 
   const pieceValues = {
     p: 100,
@@ -92,6 +97,9 @@
   let selectedLegalMoves = [];
   let isAiThinking = false;
   let pendingPromotionMoves = [];
+  let latestSearchStats = createSearchStats(0);
+  let activeSearchToken = 0;
+  const transpositionTable = new Map();
 
   let boardElement;
   let topCoordinatesElement;
@@ -101,6 +109,12 @@
   let statusElement;
   let currentTurnElement;
   let evaluationElement;
+  let thinkingElement;
+  let searchDepthElement;
+  let positionsSearchedElement;
+  let tableHitsElement;
+  let thinkingTimeElement;
+  let bestMoveElement;
   let moveListElement;
   let moveCountElement;
   let restartButton;
@@ -780,16 +794,120 @@
     return false;
   }
 
+  function createSearchStats(maxDepth) {
+    return {
+      currentDepth: 0,
+      maxDepth: maxDepth,
+      positionsSearched: 0,
+      transpositionHits: 0,
+      timeSpentMs: 0,
+      bestMove: null,
+      bestScore: null,
+      startTime: getCurrentTime()
+    };
+  }
+
+  function getCurrentTime() {
+    if (typeof performance !== "undefined" && performance.now) {
+      return performance.now();
+    }
+
+    return Date.now();
+  }
+
+  function updateSearchStatsTime(stats) {
+    stats.timeSpentMs = Math.round(getCurrentTime() - stats.startTime);
+  }
+
   function findBestMove(state, aiColor, depth) {
-    const legalMoves = orderMoves(getLegalMoves(state, aiColor), state.board);
+    const stats = createSearchStats(depth);
+    let bestMove = null;
+    let bestScore = -Infinity;
+    let preferredMove = null;
+
+    for (let currentDepth = 1; currentDepth <= depth; currentDepth += 1) {
+      stats.currentDepth = currentDepth;
+      const result = searchRootAtDepth(state, aiColor, currentDepth, preferredMove, stats);
+
+      if (result.bestMove) {
+        bestMove = result.bestMove;
+        bestScore = result.bestScore;
+        preferredMove = result.bestMove;
+        stats.bestMove = cloneMoveForSearch(bestMove);
+        stats.bestScore = bestScore;
+      }
+
+      updateSearchStatsTime(stats);
+    }
+
+    latestSearchStats = stats;
+    return bestMove;
+  }
+
+  async function findBestMoveAsync(state, aiColor, depth, shouldContinue) {
+    const stats = createSearchStats(depth);
+    let bestMove = null;
+    let bestScore = -Infinity;
+    let preferredMove = null;
+
+    latestSearchStats = stats;
+    renderSearchStats();
+
+    for (let currentDepth = 1; currentDepth <= depth; currentDepth += 1) {
+      if (shouldContinue && !shouldContinue()) {
+        break;
+      }
+
+      stats.currentDepth = currentDepth;
+
+      const result = searchRootAtDepth(state, aiColor, currentDepth, preferredMove, stats);
+
+      if (result.bestMove) {
+        bestMove = result.bestMove;
+        bestScore = result.bestScore;
+        preferredMove = result.bestMove;
+        stats.bestMove = cloneMoveForSearch(bestMove);
+        stats.bestScore = bestScore;
+      }
+
+      updateSearchStatsTime(stats);
+      latestSearchStats = stats;
+      renderSearchStats();
+
+      // Yielding between depths lets the browser repaint the thinking stats.
+      await waitForBrowserToPaint();
+    }
+
+    updateSearchStatsTime(stats);
+    latestSearchStats = stats;
+    renderSearchStats();
+
+    return bestMove;
+  }
+
+  function waitForBrowserToPaint() {
+    if (typeof window === "undefined") {
+      return Promise.resolve();
+    }
+
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, 0);
+    });
+  }
+
+  function searchRootAtDepth(state, aiColor, depth, preferredMove, stats) {
+    const storedMove = getStoredBestMove(state, aiColor);
+    const moveToTryFirst = preferredMove || storedMove;
+    const legalMoves = orderMoves(state.board, getLegalMoves(state, aiColor), aiColor, state, moveToTryFirst);
     let bestMove = null;
     let bestScore = -Infinity;
     let alpha = -Infinity;
     const beta = Infinity;
 
-    legalMoves.forEach(function (move) {
+    for (let i = 0; i < legalMoves.length; i += 1) {
+      const move = legalMoves[i];
       const nextState = makeMove(state, move, { recordPosition: false });
-      const score = minimax(nextState, depth - 1, alpha, beta, aiColor);
+      const score = minimax(nextState, depth - 1, alpha, beta, aiColor, stats);
 
       if (score > bestScore || !bestMove) {
         bestScore = score;
@@ -797,51 +915,176 @@
       }
 
       alpha = Math.max(alpha, bestScore);
-    });
+    }
 
-    return bestMove;
+    if (bestMove) {
+      storeTranspositionEntry(state, aiColor, depth, bestScore, exactFlag, bestMove);
+    }
+
+    return {
+      bestMove: bestMove,
+      bestScore: bestScore
+    };
   }
 
-  function minimax(state, depth, alpha, beta, aiColor) {
+  function minimax(state, depth, alpha, beta, aiColor, stats) {
+    if (stats) {
+      stats.positionsSearched += 1;
+    }
+
     const result = getGameResult(state, { includeDrawRules: false });
 
-    if (result || depth === 0) {
+    if (result) {
       return evaluateState(state, aiColor, result, depth);
     }
 
-    const legalMoves = orderMoves(getLegalMoves(state, state.turn), state.board);
+    if (depth <= 0) {
+      return quiescenceSearch(state.board, alpha, beta, state.turn, state, aiColor, stats, 0);
+    }
+
+    const originalAlpha = alpha;
+    const originalBeta = beta;
+    const tableEntry = transpositionTable.get(getSearchHash(state, aiColor));
+
+    if (tableEntry && tableEntry.depth >= depth) {
+      if (stats) {
+        stats.transpositionHits += 1;
+      }
+
+      if (tableEntry.flag === exactFlag) {
+        return tableEntry.score;
+      }
+
+      if (tableEntry.flag === lowerBoundFlag) {
+        alpha = Math.max(alpha, tableEntry.score);
+      } else if (tableEntry.flag === upperBoundFlag) {
+        beta = Math.min(beta, tableEntry.score);
+      }
+
+      if (alpha >= beta) {
+        return tableEntry.score;
+      }
+    }
+
+    const preferredMove = tableEntry ? tableEntry.bestMove : null;
+    const legalMoves = orderMoves(state.board, getLegalMoves(state, state.turn), state.turn, state, preferredMove);
+    let bestMove = null;
+    let bestScore;
 
     if (state.turn === aiColor) {
-      let bestScore = -Infinity;
+      bestScore = -Infinity;
 
       for (let i = 0; i < legalMoves.length; i += 1) {
-        const nextState = makeMove(state, legalMoves[i], { recordPosition: false });
-        const score = minimax(nextState, depth - 1, alpha, beta, aiColor);
-        bestScore = Math.max(bestScore, score);
+        const move = legalMoves[i];
+        const nextState = makeMove(state, move, { recordPosition: false });
+        const score = minimax(nextState, depth - 1, alpha, beta, aiColor, stats);
+
+        if (score > bestScore || !bestMove) {
+          bestScore = score;
+          bestMove = move;
+        }
+
         alpha = Math.max(alpha, bestScore);
 
         if (beta <= alpha) {
           break;
         }
       }
+    } else {
+      bestScore = Infinity;
 
-      return bestScore;
-    }
+      for (let i = 0; i < legalMoves.length; i += 1) {
+        const move = legalMoves[i];
+        const nextState = makeMove(state, move, { recordPosition: false });
+        const score = minimax(nextState, depth - 1, alpha, beta, aiColor, stats);
 
-    let bestScore = Infinity;
+        if (score < bestScore || !bestMove) {
+          bestScore = score;
+          bestMove = move;
+        }
 
-    for (let i = 0; i < legalMoves.length; i += 1) {
-      const nextState = makeMove(state, legalMoves[i], { recordPosition: false });
-      const score = minimax(nextState, depth - 1, alpha, beta, aiColor);
-      bestScore = Math.min(bestScore, score);
-      beta = Math.min(beta, bestScore);
+        beta = Math.min(beta, bestScore);
 
-      if (beta <= alpha) {
-        break;
+        if (beta <= alpha) {
+          break;
+        }
       }
     }
 
+    const flag = getTranspositionFlag(bestScore, originalAlpha, originalBeta);
+    storeTranspositionEntry(state, aiColor, depth, bestScore, flag, bestMove);
+
     return bestScore;
+  }
+
+  function quiescenceSearch(board, alpha, beta, color, state, aiColor, stats, ply) {
+    const searchState = state || createSearchStateFromBoard(board, color);
+    const perspectiveColor = aiColor || color;
+    const currentPly = ply || 0;
+
+    if (stats) {
+      stats.positionsSearched += 1;
+    }
+
+    const result = getGameResult(searchState, { includeDrawRules: false });
+
+    if (result || currentPly >= maxQuiescenceDepth) {
+      return evaluateState(searchState, perspectiveColor, result, maxQuiescenceDepth - currentPly);
+    }
+
+    const sideToMoveIsInCheck = isKingInCheck(searchState.board, searchState.turn);
+
+    if (!sideToMoveIsInCheck) {
+      const standPatScore = evaluateState(searchState, perspectiveColor, null, 0);
+
+      if (searchState.turn === perspectiveColor) {
+        if (standPatScore >= beta) {
+          return beta;
+        }
+
+        alpha = Math.max(alpha, standPatScore);
+      } else {
+        if (standPatScore <= alpha) {
+          return alpha;
+        }
+
+        beta = Math.min(beta, standPatScore);
+      }
+    }
+
+    const legalMoves = getLegalMoves(searchState, searchState.turn);
+    const tacticalMoves = legalMoves.filter(function (move) {
+      return sideToMoveIsInCheck || isTacticalMove(searchState, move);
+    });
+    const orderedMoves = orderMoves(searchState.board, tacticalMoves, searchState.turn, searchState, null);
+
+    if (searchState.turn === perspectiveColor) {
+      for (let i = 0; i < orderedMoves.length; i += 1) {
+        const nextState = makeMove(searchState, orderedMoves[i], { recordPosition: false });
+        const score = quiescenceSearch(nextState.board, alpha, beta, nextState.turn, nextState, perspectiveColor, stats, currentPly + 1);
+
+        if (score >= beta) {
+          return beta;
+        }
+
+        alpha = Math.max(alpha, score);
+      }
+
+      return alpha;
+    }
+
+    for (let i = 0; i < orderedMoves.length; i += 1) {
+      const nextState = makeMove(searchState, orderedMoves[i], { recordPosition: false });
+      const score = quiescenceSearch(nextState.board, alpha, beta, nextState.turn, nextState, perspectiveColor, stats, currentPly + 1);
+
+      if (score <= alpha) {
+        return alpha;
+      }
+
+      beta = Math.min(beta, score);
+    }
+
+    return beta;
   }
 
   function evaluateState(state, aiColor, result, depth) {
@@ -877,29 +1120,192 @@
     return score;
   }
 
-  function orderMoves(moves, board) {
-    return moves.slice().sort(function (first, second) {
-      return scoreMoveForOrdering(second, board) - scoreMoveForOrdering(first, board);
+  function getBoardHash(state) {
+    return getPositionKey(state) + " " + state.halfmoveClock;
+  }
+
+  function getSearchHash(state, aiColor) {
+    return getBoardHash(state) + " " + aiColor;
+  }
+
+  function getStoredBestMove(state, aiColor) {
+    const tableEntry = transpositionTable.get(getSearchHash(state, aiColor));
+    return tableEntry ? tableEntry.bestMove : null;
+  }
+
+  function storeTranspositionEntry(state, aiColor, depth, score, flag, bestMove) {
+    if (!bestMove) {
+      return;
+    }
+
+    // The table is deliberately simple: if it gets too large, start fresh.
+    if (transpositionTable.size > maxTranspositionEntries) {
+      transpositionTable.clear();
+    }
+
+    transpositionTable.set(getSearchHash(state, aiColor), {
+      depth: depth,
+      score: score,
+      bestMove: cloneMoveForSearch(bestMove),
+      flag: flag
     });
   }
 
-  function scoreMoveForOrdering(move, board) {
-    let score = 0;
-    const targetPiece = move.isEnPassant ? board[move.from.row][move.to.col] : board[move.to.row][move.to.col];
+  function getTranspositionFlag(score, originalAlpha, originalBeta) {
+    if (score <= originalAlpha) {
+      return upperBoundFlag;
+    }
 
-    if (targetPiece) {
-      score += pieceValues[targetPiece.type] - pieceValues[move.piece.type] / 10;
+    if (score >= originalBeta) {
+      return lowerBoundFlag;
+    }
+
+    return exactFlag;
+  }
+
+  function createSearchStateFromBoard(board, color) {
+    return {
+      board: cloneBoard(board),
+      turn: color,
+      userColor: oppositeColor(color),
+      aiColor: color,
+      difficulty: "medium",
+      castlingRights: {
+        w: { k: false, q: false },
+        b: { k: false, q: false }
+      },
+      enPassantTarget: null,
+      halfmoveClock: 0,
+      fullmoveNumber: 1,
+      moveHistory: [],
+      lastMove: null,
+      positionCounts: new Map(),
+      gameOver: false
+    };
+  }
+
+  function cloneMoveForSearch(move) {
+    if (!move) {
+      return null;
+    }
+
+    return {
+      from: cloneSquare(move.from),
+      to: cloneSquare(move.to),
+      piece: clonePiece(move.piece),
+      captured: clonePiece(move.captured),
+      promotion: move.promotion,
+      isEnPassant: move.isEnPassant,
+      isCastle: move.isCastle,
+      castleSide: move.castleSide
+    };
+  }
+
+  function isSameMove(first, second) {
+    return Boolean(
+      first &&
+      second &&
+      sameSquare(first.from, second.from) &&
+      sameSquare(first.to, second.to) &&
+      first.promotion === second.promotion &&
+      first.isCastle === second.isCastle &&
+      first.isEnPassant === second.isEnPassant
+    );
+  }
+
+  function orderMoves(board, moves, color, state, preferredMove) {
+    const scoredMoves = moves.map(function (move) {
+      return {
+        move: move,
+        score: scoreMoveForOrdering(board, move, color, state, preferredMove)
+      };
+    });
+
+    scoredMoves.sort(function (first, second) {
+      return second.score - first.score;
+    });
+
+    return scoredMoves.map(function (scoredMove) {
+      return scoredMove.move;
+    });
+  }
+
+  function scoreMoveForOrdering(board, move, color, state, preferredMove) {
+    let score = scoreCenterMove(move);
+    const checkDetails = state ? getMoveCheckDetails(state, move, color) : { givesCheck: false, isCheckmate: false };
+    const capturedPiece = getCapturedPieceForMove(board, move);
+
+    if (checkDetails.isCheckmate) {
+      score += 10000000;
+    }
+
+    if (checkDetails.givesCheck) {
+      score += 1000000;
+    }
+
+    if (preferredMove && isSameMove(move, preferredMove)) {
+      score += 800000;
+    }
+
+    if (capturedPiece) {
+      // MVV-LVA: valuable victims and cheap attackers are searched first.
+      score += 100000 + pieceValues[capturedPiece.type] * 10 - pieceValues[move.piece.type];
     }
 
     if (move.promotion) {
-      score += pieceValues[move.promotion];
+      score += 50000 + pieceValues[move.promotion];
     }
 
     if (move.isCastle) {
-      score += 30;
+      score += 10000;
     }
 
     return score;
+  }
+
+  function getMoveCheckDetails(state, move, color) {
+    const nextState = makeMove(state, move, { recordPosition: false });
+    const opponentColor = oppositeColor(color);
+    const givesCheck = isKingInCheck(nextState.board, opponentColor);
+
+    if (!givesCheck) {
+      return {
+        givesCheck: false,
+        isCheckmate: false
+      };
+    }
+
+    return {
+      givesCheck: true,
+      isCheckmate: getLegalMoves(nextState, opponentColor).length === 0
+    };
+  }
+
+  function getCapturedPieceForMove(board, move) {
+    if (move.captured) {
+      return move.captured;
+    }
+
+    if (move.isEnPassant) {
+      return board[move.from.row][move.to.col];
+    }
+
+    return board[move.to.row][move.to.col];
+  }
+
+  function isTacticalMove(state, move) {
+    if (getCapturedPieceForMove(state.board, move) || move.promotion) {
+      return true;
+    }
+
+    const nextState = makeMove(state, move, { recordPosition: false });
+    return isKingInCheck(nextState.board, nextState.turn);
+  }
+
+  function scoreCenterMove(move) {
+    const rowDistance = Math.abs(move.to.row - 3.5);
+    const colDistance = Math.abs(move.to.col - 3.5);
+    return Math.max(0, 28 - Math.round((rowDistance + colDistance) * 4));
   }
 
   function initApp() {
@@ -911,6 +1317,12 @@
     statusElement = document.getElementById("statusText");
     currentTurnElement = document.getElementById("currentTurnText");
     evaluationElement = document.getElementById("evaluationText");
+    thinkingElement = document.getElementById("thinkingText");
+    searchDepthElement = document.getElementById("searchDepthText");
+    positionsSearchedElement = document.getElementById("positionsSearchedText");
+    tableHitsElement = document.getElementById("tableHitsText");
+    thinkingTimeElement = document.getElementById("thinkingTimeText");
+    bestMoveElement = document.getElementById("bestMoveText");
     moveListElement = document.getElementById("moveList");
     moveCountElement = document.getElementById("moveCountText");
     restartButton = document.getElementById("restartButton");
@@ -920,6 +1332,7 @@
     promotionChoices = document.getElementById("promotionChoices");
 
     gameState = createNewGame(white, difficultySelect.value);
+    latestSearchStats = createSearchStats(difficultyDepths[difficultySelect.value] || 2);
     wireControls();
     render();
   }
@@ -931,7 +1344,9 @@
 
     difficultySelect.addEventListener("change", function () {
       gameState.difficulty = difficultySelect.value;
+      latestSearchStats.maxDepth = difficultyDepths[gameState.difficulty] || 2;
       renderStatus();
+      renderSearchStats();
     });
 
     sideButtons.forEach(function (button) {
@@ -946,6 +1361,9 @@
     selectedLegalMoves = [];
     pendingPromotionMoves = [];
     isAiThinking = false;
+    activeSearchToken += 1;
+    transpositionTable.clear();
+    latestSearchStats = createSearchStats(difficultyDepths[difficultySelect.value] || 2);
     gameState = createNewGame(userColor, difficultySelect.value);
     updateSideButtons();
     hidePromotionDialog();
@@ -962,6 +1380,7 @@
   function render() {
     renderBoard();
     renderStatus();
+    renderSearchStats();
     renderMoveList();
   }
 
@@ -1084,6 +1503,47 @@
     statusElement.textContent = actorText + " as " + colorName(gameState.turn) + "." + checkText;
   }
 
+  function renderSearchStats() {
+    if (!thinkingElement || !searchDepthElement || !positionsSearchedElement || !tableHitsElement || !thinkingTimeElement || !bestMoveElement) {
+      return;
+    }
+
+    const stats = latestSearchStats || createSearchStats(difficultyDepths[gameState.difficulty] || 2);
+    const maxDepth = stats.maxDepth || difficultyDepths[gameState.difficulty] || 2;
+
+    thinkingElement.textContent = isAiThinking ? "Thinking" : "Idle";
+    thinkingElement.classList.toggle("thinking", isAiThinking);
+    searchDepthElement.textContent = String(stats.currentDepth || 0) + " / " + String(maxDepth);
+    positionsSearchedElement.textContent = formatWholeNumber(stats.positionsSearched || 0);
+    tableHitsElement.textContent = formatWholeNumber(stats.transpositionHits || 0);
+    thinkingTimeElement.textContent = formatThinkingTime(stats.timeSpentMs || 0);
+    bestMoveElement.textContent = formatMoveForStats(stats.bestMove);
+  }
+
+  function formatWholeNumber(value) {
+    return Math.round(value).toLocaleString("en-US");
+  }
+
+  function formatThinkingTime(milliseconds) {
+    if (milliseconds < 1000) {
+      return String(milliseconds) + " ms";
+    }
+
+    return (milliseconds / 1000).toFixed(2) + " s";
+  }
+
+  function formatMoveForStats(move) {
+    if (!move) {
+      return "None yet";
+    }
+
+    const pieceLetter = move.piece.type === "p" ? "" : move.piece.type.toUpperCase();
+    const separator = move.captured || move.isEnPassant ? "x" : "-";
+    const promotionText = move.promotion ? "=" + move.promotion.toUpperCase() : "";
+
+    return pieceLetter + squareName(move.from.row, move.from.col) + separator + squareName(move.to.row, move.to.col) + promotionText;
+  }
+
   function formatEvaluation(state, result) {
     if (result) {
       if (result.winner === null) {
@@ -1203,20 +1663,36 @@
     }
 
     isAiThinking = true;
+    activeSearchToken += 1;
+    const searchToken = activeSearchToken;
+    const searchState = gameState;
+    const depth = difficultyDepths[gameState.difficulty] || 2;
+    latestSearchStats = createSearchStats(depth);
     render();
 
     window.setTimeout(function () {
-      const depth = difficultyDepths[gameState.difficulty] || 2;
-      const move = findBestMove(gameState, gameState.aiColor, depth);
+      findBestMoveAsync(searchState, searchState.aiColor, depth, function () {
+        return searchToken === activeSearchToken;
+      }).then(function (move) {
+        if (searchToken !== activeSearchToken) {
+          return;
+        }
 
-      if (move) {
-        gameState = makeMove(gameState, move, { recordPosition: true });
-      }
+        if (move) {
+          gameState = makeMove(gameState, move, { recordPosition: true });
+        }
 
-      isAiThinking = false;
-      selectedSquare = null;
-      selectedLegalMoves = [];
-      render();
+        isAiThinking = false;
+        selectedSquare = null;
+        selectedLegalMoves = [];
+        render();
+      }).catch(function (error) {
+        if (searchToken === activeSearchToken) {
+          isAiThinking = false;
+          statusElement.textContent = "SixySeveny search stopped: " + error.message;
+          render();
+        }
+      });
     }, 120);
   }
 
@@ -1232,7 +1708,11 @@
     hasInsufficientMaterial: hasInsufficientMaterial,
     evaluateState: evaluateState,
     minimax: minimax,
+    quiescenceSearch: quiescenceSearch,
+    orderMoves: orderMoves,
     findBestMove: findBestMove,
+    findBestMoveAsync: findBestMoveAsync,
+    getBoardHash: getBoardHash,
     getPositionKey: getPositionKey,
     squareName: squareName,
     pieceValues: pieceValues,
