@@ -1,8 +1,38 @@
+<div align="center">
+
 # SixySeveny
 
-SixySeveny is a browser-based chess AI written from scratch with HTML, CSS, and vanilla JavaScript. It does not use chess.js, Stockfish, external chess engines, chess rules libraries, or frontend frameworks.
+**A browser chess engine built from scratch with HTML, CSS, and vanilla JavaScript.**
 
-Open `https://jonathannerd.github.io/ChessAI/` in a browser to play. The project is fully static, so it can also be published directly with GitHub Pages.
+[Play SixySeveny](https://jonathannerd.github.io/ChessAI/)
+
+![JavaScript](https://img.shields.io/badge/JavaScript-vanilla-F7DF1E?logo=javascript&logoColor=111)
+![No engine dependency](https://img.shields.io/badge/chess_engine-built_from_scratch-7C3AED)
+![GitHub Pages](https://img.shields.io/badge/deployed-GitHub_Pages-222?logo=github)
+
+</div>
+
+SixySeveny implements its own board state, legal-move generator, special chess rules, position evaluation, minimax search, and alpha-beta pruning. It does not use chess.js, Stockfish, an external chess engine, a chess-rules library, or a frontend framework.
+
+## Highlights
+
+- Play as White or Black with automatic board flipping
+- Click-to-move controls and legal-move highlights
+- Full castling, en passant, and promotion rules
+- Check, checkmate, stalemate, and draw detection
+- Four AI search depths
+- Move history, status messages, and responsive layout
+- Zero build step and no runtime dependencies
+
+## Quick start
+
+Open the [live GitHub Pages version](https://jonathannerd.github.io/ChessAI/), or clone and open the static site locally:
+
+```bash
+git clone https://github.com/jonathannerd/ChessAI.git
+cd ChessAI
+open index.html
+```
 
 ## Files
 
