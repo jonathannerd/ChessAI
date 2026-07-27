@@ -160,8 +160,6 @@ Higher depth means SixySeveny sees farther ahead, but it also takes longer to mo
 
 The user can choose White or Black. If the user chooses White, the user moves first. If the user chooses Black, SixySeveny plays White and moves first. The board is rendered from the user's point of view.
 
-## Search-Based AI vs Training-Based AI
-
 ### Search-Based Chess AI
 
 A search-based chess AI looks ahead through possible legal moves. It uses rules to generate moves, a search algorithm like minimax to explore them, and an evaluation function to estimate which final positions are best.
